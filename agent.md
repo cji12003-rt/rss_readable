@@ -1,103 +1,199 @@
-# RSS読み上げニュースアプリ 要件定義（個人用）
+# agent.md
 
-## 概要
-個人用 Android アプリ。Pixel 7a などで動作。  
-RSS フィードを登録・保存し、ニュース記事（少なくともタイトル）を連続で読み上げるアプリ。画面オフでも読み上げを継続させる。
+## プロジェクト名
 
-## 用語定義
-| 用語 | 意味 |
-|---|---|
-| RSSURL | ニュースフィードの URL（XMLフィード） |
-| 記事 | RSS から取得したアイテム。少なくとも `タイトル` を含む。将来的には本文取得も可。 |
-| 読み上げ | Text-to-Speech (TTS) による音声出力。順次・連続で行う。 |
+RSS読み上げニュースアプリ（個人用）
 
-## 対応プラットフォーム・技術
-- Android（最低 API レベルはおおむね 26 以上想定）  
-- 開発言語：Kotlin  
-- TTS：Android 標準 `TextToSpeech` API  
-- RSS XML パース：`XmlPullParser` または `Jsoup` 等  
-- 永続保存：`SharedPreferences`（将来的に Room 等へ拡張可能）  
-- 常駐動作：ForegroundService + Notification  
-- 通知操作：再生／停止／スキップ等将来的に含む
+## 目的
 
-## 機能要件（MVP＋拡張フェーズ付き、優先順位あり）
+Pixel 7a 等の Android 環境で、ユーザーが指定した RSS フィードを読み上げるMVPを迅速に実装するためのAI向け作業仕様書。
 
-| 番号 | 機能 | 優先度 | 説明 |
-|---|---|---|---|
-| 1 | RSS フィードURLを **パラメータで設定可能** | 高 | アプリ起動時または設定画面で指定でき、ハードコーディングに依存しないが、初期値も持たせてよい。 |
-| 2 | RSS フィードの取得 & 記事タイトルのパース | 高 | 登録された RSSURL から取得し、記事（少なくともタイトル）一覧を構築。 |
-| 3 | 連続読み上げ | 高 | 記事リストの順番に TTS で読み上げ；読み上げが終わったら次の記事へ。 |
-| 4 | ForegroundService を使って画面オフでも読み上げ継続 | 高 | Android のフォアグラウンドサービス + 通知を用いて本体がスリープ／画面オフになっても読み上げを止めない。 |
-| 5 | 通知から停止操作 | 中 | 通知バーから読み上げを止めるボタンを持たせる。 |
-| 6 | 通知からスキップ操作（次の記事へ） | 中 | 再生中の記事を飛ばして次の記事を読み始める操作を通知界隈または UI 上に。 |
-| 7 | RSSURL を保存し、変更可能にする機能 | 中 | `SharedPreferences` 等で永続保存。設定画面での編集。都度入力ではない。 |
-| 8 | 複数 RSSURL を登録できるようにする | 低／拡張 | 複数のフィードを登録し、順繰りに取得 → 読み上げ。 |
-| 9 | 正規表現フィルタリングによる記事スキップ機能 | 低／拡張 | タイトルが特定パターンにマッチしたら読み飛ばす。パターン編集可能。 |
-| 10 | 記事本文の取得 & 本文読み上げ | 低／拡張 | フィードの本文も取得して、タイトルだけでなく本文も読み上げる。サイトによってはパース処理が複雑。 |
-| 11 | 読み上げ設定の調整 UI（速度・声質） | 低／拡張 | TTS の速度・ピッチ・言語などを設定可能にする。 |
+---
 
-## 非機能要件
+## 要約（短く）
 
-- 動作は個人用。Google Play 公開を前提としないので、最低限の権限で動作すればよい。  
-- バッテリー消費に注意。ForegroundService を使うのは不可欠だが、できるだけ無駄な処理をしない。  
-- Android の API レベルによる仕様の変動を吸収すること（サービス型式、通知ポリシーなど）。  
-- UI はシンプルで最小限。設定・状態表示・操作ボタンのみ。  
+* **MVPゴール**: アプリを起動時にパラメータで与えた RSS URL を読み込み、取得した記事タイトルを Text-to-Speech で**連続読み上げ**する。画面オフでも読み上げを継続すること。
+* **パラメータ要件**: 起動 Intent やアプリ内設定で `rssUrl` を渡せること（MVPではコマンドライン/Intent パラメータまたはリソースで事前設定可）。
 
-## 制約条件
+---
 
-- 初期バージョン（MVP）では RSSURL はパラメータで指定できるが、登録 UI は将来的フェーズで。  
-- MVP では複数 URL 登録・正規表現フィルタ・本文読み上げなどは実装しない。  
-- 常に画面オフで読み上げ続けること。もし Android の電源最適化等で停止するなら、ユーザーに設定を促すこと。
+## 重要ポリシー（開発時の注意）
 
-## 技術上の注意点・外部参照
+* ForegroundService を必ず用いる（通知表示必須）。
+* Android のバッテリー最適化により挙動が変わるため、挙動不良時はユーザーへ設定画面で案内する文言を表示すること。
+* 本プロジェクトは個人用途。外部公開や商用配布での追加要件は考慮しない。
 
-- Android 14 (API 34) では Foreground Service に `android:foregroundServiceType` の指定が必須。:contentReference[oaicite:0]{index=0}  
-- Manifest に適切な permission を宣言する必要あり。:contentReference[oaicite:1]{index=1}  
-- Notification チャネルを設定し、通知の表示を確実にする。ForegroundService 通知はユーザーに明示される必要あり。:contentReference[oaicite:2]{index=2}  
+---
 
-## インターフェース（API/パラメータ）
+## 優先順位（MVP → 第2 → 第3）
 
-- アプリ起動時または Intent パラメータで RSSURL を受け取る（例：起動 Intent に `--rssUrl=<url>`）  
-- デフォルト RSSURL をコード内またはリソースで定義しておく  
-- 将来の設定画面で URL の編集が可能  
-- 読み上げ制御の操作: 再生・停止・スキップ（将来的）  
+### MVP（必須）
 
-## 画面・UI仕様（MVP フェーズのみ）
+1. 起動パラメータ `rssUrl` の受け取りと既定値の設定（例: `DEFAULT_RSS_URL`）。
+2. RSS を取得して記事タイトルをパース（タイトルのみで良い）。
+3. TTS による**連続読み上げ**（読み上げ完了時に次を再生）。
+4. ForegroundService によるバックグラウンド動作（通知に「停止」ボタン）。
+5. 基本的な UI（MainActivity）に再生/停止ボタンと取得したタイトル一覧表示。
 
-- 起動画面（MainActivity）  
-  - デフォルトまたはパラメータで得た RSSURL を表示（または `TextView` か `EditText` に表示）  
-  - 「再生」「停止」ボタン  
-  - 記事タイトル一覧（ListView / RecyclerView）を表示（読み上げ対象）  
-- 通知  
-  - ForegroundService 用通知に「停止」ボタンを含む  
-  - 将来的に通知に「スキップ」も追加  
+### 第2フェーズ（中）
 
-## テストケース
+6. `SharedPreferences` による RSS URL の保存・編集機能（初回はパラメータで設定）。
+7. 通知からの「一時停止／再開／スキップ」アクション実装。
+8. 複数 RSS のサポート（リスト管理）。
 
-| テスト内容 | 期待結果 |
-|---|---|
-| パラメータで起動時に指定した RSSURL が読み込まれる | 指定 URL の記事タイトルが取得できること |
-| デフォルト URL（パラメータなし）で起動した場合 | デフォルトの RSSURL を使って記事取得すること |
-| 連続読み上げボタンを押す | 記事タイトルを順番に TTS で読み上げること |
-| 読み上げ途中で画面をオフにする | 読み上げが停止せず継続すること |
-| 通知の「停止」ボタン | 読み上げを停止し ForegroundService が終了、通知が消えること |
+### 第3フェーズ（低）
 
-## スケジュール案（MVPフェーズ）
+9. 正規表現による記事フィルタリング（読み飛ばし）。
+10. RSS の `<description>` / `<content>` 等を用いた本文読み上げ。HTML パース処理。
+11. 語句の読み替え（ユーザ辞書）や読み上げ設定（速度・音声）。
 
-1. 基本構造のセットアップ  
-   - プロジェクト作成、必要パーミッション設定（TTS・ForegroundService）  
-   - デフォルト RSSURL を持たせる仕組み  
-2. RSS取得・パース機能の実装  
-3. TTS 読み上げ単一記事 → 連続読み上げロジック  
-4. ForegroundService + 通知＋停止操作実装  
-5. UIで記事リスト表示、再生／停止ボタン設置  
-6. テスト：画面オフ、停止操作の動作確認  
+---
 
-## 将来のフェーズ（拡張案）
+## 技術スタック
 
-- 複数 RSSURL 登録  
-- 正規表現フィルタ機能  
-- 本文取得 & 本文読み上げ  
-- 読み上げ速度・声をユーザー設定可能に  
-- 通知からスキップ操作  
+* 言語: Kotlin
+* IDE: Android Studio
+* Minimum API: 26 以上推奨（実際のデバイス Pixel 7a は API 33/34 を想定）
+* ライブラリ: Jsoup（本文パースが必要な場合）または XmlPullParser（軽量）
+* 永続化: SharedPreferences（MVP）→ Room（拡張時）
+* TTS: Android `TextToSpeech` API
+* サービス: `ForegroundService` + Notification (MediaStyle optional)
 
+---
+
+## アーキテクチャ（高レベル）
+
+```
+MainActivity (UI)  <-->  RssRepository  <-->  Network
+                          |
+                          v
+                NewsReaderService (ForegroundService)
+                          |
+                          v
+                    TtsManager (TextToSpeech wrapper)
+```
+
+### コンポーネント役割
+
+* **MainActivity**: 起動パラメータ受け取り、UI表示、再生/停止操作を送信。MVPでは URL の手動入力は不要（パラメータと既定値で運用）。
+* **RssRepository**: RSS の取得・パースを行い、`List<Article>` を返す。シンプルな cache を保持。
+* **NewsReaderService**: ForegroundService。RssRepository から記事を受け取り、TtsManager に渡して読み上げを連続制御する。通知のアクションを受領する。
+* **TtsManager**: `TextToSpeech` の初期化、読み上げ、コールバックのハンドリングを抽象化。
+
+---
+
+## インターフェース（Intent / Parameter）
+
+* 起動 Intent extras:
+
+  * `extra_rss_url` (String) — 優先される RSS URL。指定がない場合は `DEFAULT_RSS_URL` を使用。
+  * `action_play`, `action_stop`, `action_skip` — Notification/Intent 経由で Service を操作するためのアクション定義。
+
+---
+
+## タスク一覧（AI agent に渡す単位）
+
+各タスクは「入力」「出力」「受け入れ条件」を明示する。
+
+### タスク A: プロジェクト雛形作成
+
+* 入力: `package` 名、`DEFAULT_RSS_URL`（例: [https://example.com/feed）](https://example.com/feed）)
+* 出力: Android Studio を使える Gradle プロジェクト、MainActivity、NewsReaderService、RssRepository、TtsManager のひな形ファイル。
+* 受け入れ条件: アプリをビルドでき、MainActivity が起動する。
+
+### タスク B: RSS 取得＆パース（RssRepository）
+
+* 入力: `rssUrl` 文字列
+* 出力: `List<Article>`（data class Article(val title\:String, val link\:String?, val pubDate\:String? )）
+* 受け入れ条件: 指定 RSS のタイトルを 10 件まで取得して返す。ネットワーク失敗時に明示的な例外/エラーを返す。
+
+### タスク C: TTS ラッパー（TtsManager）
+
+* 入力: `String` を読み上げる API
+* 出力: 読み上げ開始、終了コールバックが利用可能
+* 受け入れ条件: 実機またはエミュレータ上で `speak("test")` が音声再生される。読み上げ完了でコールバックされる。
+
+### タスク D: ForegroundService（NewsReaderService）
+
+* 入力: `List<Article>` と `action_play/stop/skip` Intent
+* 出力: 読み上げをサービスで継続。通知に「停止」ボタンを表示。
+* 受け入れ条件: 再生開始後に画面オフにしても読み上げが継続する（少なくとも短時間のスリープで停止しないことを確認）。停止アクションでサービスが終了する。
+
+### タスク E: UI 統合（MainActivity）
+
+* 入力: `DEFAULT_RSS_URL` または `extra_rss_url` を用いて取得→サービスタート
+* 出力: タイトル一覧の RecyclerView、再生/停止ボタンを表示
+* 受け入れ条件: ユーザーが再生ボタンを押すと Service が起動して読み上げを開始すること。
+
+### タスク F: テストケース作成
+
+* 入力: 上記機能
+* 出力: 手順化されたテストケース（受け入れ基準に沿う）
+* 受け入れ条件: 全ての MVP 受け入れ条件を満たすテストが存在すること。
+
+---
+
+## 受け入れ基準（MVP）
+
+* アプリ起動時に `extra_rss_url` が指定されていればそれを使い、なければ `DEFAULT_RSS_URL` を使用する。
+* RSS のタイトルを取得し、MainActivity で一覧表示できる。
+* 再生ボタンで読み上げが開始され、読み上げ完了後に自動で次の記事を読み上げる。
+* 読み上げ中に画面をオフにしても（短時間のスリープで）読み上げが継続する。
+* 通知の「停止」ボタンで読み上げが停止し、フォアグラウンドサービスが終了する。
+
+---
+
+## テストシナリオ（簡易）
+
+1. 起動 with `extra_rss_url` → タイトル一覧が表示される
+2. 再生開始 → TTS がタイトルを読み上げる
+3. 画面オフにしても読み上げ継続（15秒程度で確認）
+4. 通知の停止を押す → 読み上げ停止、通知消失
+5. ネットワーク切断時の挙動確認 → エラーメッセージ表示／リトライ可能
+
+---
+
+## デリバリ（成果物）
+
+* Git リポジトリの初期コミット（README、LICENSE、.gitignore）
+* 実装ソースコード（MainActivity、NewsReaderService、RssRepository、TtsManager）
+* 手動テスト手順書（上記シナリオ）
+
+---
+
+## 開発上の補足メモ
+
+* ForegroundService の通知には `NotificationChannel` を確実に作成すること。
+* Android 12 以降でのバックグラウンド制限に注意（必要に応じて `foregroundServiceType` を宣言）。
+* 実機での検証は必須（エミュレータでは通知/電力最適化の違いがある）。
+* 将来的にユーザー設定（SharedPreferences）を入れる場合は、データ構造を simple String list で持つと拡張しやすい。
+
+---
+
+## AI agent への指示例（テンプレート）
+
+次のようなプロンプトで AI にタスクを投げると実行しやすい。
+
+```
+タスク: タスクB（RSS取得＆パース）を実装してください。
+言語: Kotlin
+入力: `rssUrl` (string)
+出力: `List<Article>`
+細かい要件:
+ - タイトルを安全に取得すること（例外処理必須）
+ - 最大 20 件まで返す
+ - ネットワーク失敗時は `IOException` を返す
+ - Unit test を 1 つ作成する
+```
+
+---
+
+## 付録: 参考URL（実装時に確認する箇所）
+
+* Android Foreground Service ガイド: [https://developer.android.com/guide/components/foreground-services](https://developer.android.com/guide/components/foreground-services)
+* TextToSpeech ドキュメント: [https://developer.android.com/reference/android/speech/tts/TextToSpeech](https://developer.android.com/reference/android/speech/tts/TextToSpeech)
+* XmlPullParser サンプル: [https://developer.android.com/reference/org/xmlpull/v1/XmlPullParser](https://developer.android.com/reference/org/xmlpull/v1/XmlPullParser)
+
+---
+
+以上。MVP を最優先に、段階的に拡張する想定で設計済み。必要なら、この agent.md をタスク分解して GitHub Issues 形式で出力します。
